@@ -46,9 +46,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	float MaxDrivingForce = 10000;
 	
-	//Max rotation speed (in degrees/s)
+	//Min Turning Radius at full lock (in m)
 	UPROPERTY(EditAnywhere)
-	float MaxDegreesPerSecond = 90;
+	float MinTurningRadius = 10;
 	
 	//Higher means more drag (Kg/m)
 	UPROPERTY(EditAnywhere)
