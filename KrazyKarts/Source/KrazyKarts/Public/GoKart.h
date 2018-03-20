@@ -4,28 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "GoKartMovingComponent.h"
 #include "GoKart.generated.h"
 
-/**
- * Structure for the Go Kart Move data
- */
-USTRUCT()
-struct FGoKartMove
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY()
-	float Throttle;
-
-	UPROPERTY()
-	float SteeringThrow;
-
-	UPROPERTY()
-	float DeltaTime;
-
-	UPROPERTY()
-	float Time;
-};
 
 /**
  * Structure for the Go Kart State data
@@ -67,42 +48,13 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 private:
-	FGoKartMove CreateMove(float DeltaTime);
 	void ClearAcknowledgedMoves(FGoKartMove LastMove);
 
-	void SimulateMove(const FGoKartMove& Move);
-
-	FVector GetAirResistance();
-	FVector GetRollingResistance();
-
-	void UpdateLocationFromVelocity(float DeltaTime);
-	void ApplyRotation(float DeltaTime, float SteeringThrow);
-	
 	void MoveForward(float Value);
 	void MoveRight(float Value);
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_SendMove(FGoKartMove Move);
-
-	//Mass of the car (in Kg)
-	UPROPERTY(EditAnywhere)
-	float Mass = 1000;
-	
-	//The force applied to the car when the throttle is fully down (in N)
-	UPROPERTY(EditAnywhere)
-	float MaxDrivingForce = 10000;
-	
-	//Min Turning Radius at full lock (in m)
-	UPROPERTY(EditAnywhere)
-	float MinTurningRadius = 10;
-	
-	//Higher means more drag (Kg/m)
-	UPROPERTY(EditAnywhere)
-	float DragCoefficient = 16;
-
-	//Higher means more rolling resistance
-	UPROPERTY(EditAnywhere)
-	float RollingResistenceCoefficient = 0.015f;
 
 	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
 	FGoKartState ServerState;
@@ -110,10 +62,8 @@ private:
 	UFUNCTION()
 	void OnRep_ServerState();
 
-	FVector Velocity;
-
-	float Throttle;
-	float SteeringThrow;
-
 	TArray<FGoKartMove> UnacknowledgedMoves;
+
+	UPROPERTY(EditAnywhere)
+	class UGoKartMovingComponent* MovementComponent;
 };
