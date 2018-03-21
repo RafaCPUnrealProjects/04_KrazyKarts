@@ -8,25 +8,6 @@
 #include "GoKart.generated.h"
 
 
-/**
- * Structure for the Go Kart State data
- */
-USTRUCT()
-struct FGoKartState
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY()
-	FTransform Transform;
-		
-	UPROPERTY()
-	FVector Velocity;
-
-	UPROPERTY()
-	FGoKartMove LastMove;
-};
-
-
 UCLASS()
 class KRAZYKARTS_API AGoKart : public APawn
 {
@@ -48,22 +29,13 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 private:
-	void ClearAcknowledgedMoves(FGoKartMove LastMove);
 
 	void MoveForward(float Value);
 	void MoveRight(float Value);
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_SendMove(FGoKartMove Move);
-
-	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
-	FGoKartState ServerState;
-
-	UFUNCTION()
-	void OnRep_ServerState();
-
-	TArray<FGoKartMove> UnacknowledgedMoves;
-
-	UPROPERTY(EditAnywhere)
+	
+	UPROPERTY(VisibleAnywhere)
 	class UGoKartMovingComponent* MovementComponent;
+	
+	UPROPERTY(VisibleAnywhere)
+	class UGoKartMovingReplicationComponent* ReplicationComponent;
 };
