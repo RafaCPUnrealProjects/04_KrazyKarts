@@ -5,6 +5,7 @@
 #include <GameFramework/Actor.h>
 #include <DrawDebugHelpers.h>
 #include <UnrealNetwork.h>
+#include <Engine/World.h>
 
 
 // Sets default values for this component's properties
@@ -105,32 +106,66 @@ void UGoKartMovingReplicationComponent::ClientTick(float DeltaTime)
 	if (MovementComponent == nullptr) return;
 	
 	float LerpRatio = ClientTimeSinceUpdate / ClientTimeBetweenLastUpdates;
-
-	FVector TargetLocation = ServerState.Transform.GetLocation();
-	FVector StartLocation = ClientStartTransform.GetLocation();
-	float VelocityToDerivative = ClientTimeBetweenLastUpdates * 100;
-	FVector StartDerivative = ClientStartVelocity * VelocityToDerivative;
-	FVector TargetDerivative = ServerState.Velocity * VelocityToDerivative;
-
-	FVector NewLocation = FMath::CubicInterp(StartLocation, StartDerivative, TargetLocation, TargetDerivative, LerpRatio);
-
-	GetOwner()->SetActorLocation(NewLocation);
 	
-	FVector NewDerivative = FMath::CubicInterpDerivative(StartLocation, StartDerivative, TargetLocation, TargetDerivative, LerpRatio);
-	FVector NewVelocity = NewDerivative / VelocityToDerivative;
-	MovementComponent->SetVelocity(NewVelocity);
+	FHermiteCubicSpline Spline = CreateSpline();
 
+	InterpolateLocation(Spline, LerpRatio);
+
+	InterpolateVelocity(Spline, LerpRatio);
+	
+	InterpolateRotation(LerpRatio);
+}
+
+float UGoKartMovingReplicationComponent::VelocityToDerivative()
+{
+	return ClientTimeBetweenLastUpdates * 100;
+}
+
+FHermiteCubicSpline UGoKartMovingReplicationComponent::CreateSpline()
+{
+	FHermiteCubicSpline Spline;
+	Spline.StartLocation = ClientStartTransform.GetLocation();
+	Spline.TargetLocation = ServerState.Transform.GetLocation();
+	Spline.StartDerivative = ClientStartVelocity * VelocityToDerivative();
+	Spline.TargetDerivative = ServerState.Velocity * VelocityToDerivative();
+
+	return Spline;
+}
+
+void UGoKartMovingReplicationComponent::InterpolateLocation(const FHermiteCubicSpline &Spline, float LerpRatio)
+{
+	FVector NewLocation = Spline.InterpolateLocation(LerpRatio);
+	if (MeshOffsetRoot != nullptr)
+	{
+		MeshOffsetRoot->SetWorldLocation(NewLocation);
+	}
+}
+
+void UGoKartMovingReplicationComponent::InterpolateVelocity(const FHermiteCubicSpline &Spline, float LerpRatio)
+{
+	FVector NewDerivative = Spline.InterpolateDerivative(LerpRatio);
+	FVector NewVelocity = NewDerivative / VelocityToDerivative();
+	MovementComponent->SetVelocity(NewVelocity);
+}
+
+void UGoKartMovingReplicationComponent::InterpolateRotation(float LerpRatio)
+{
 	FQuat TargetRotation = ServerState.Transform.GetRotation();
 	FQuat StartRotation = ClientStartTransform.GetRotation();
 
 	FQuat NewRotation = FQuat::Slerp(StartRotation, TargetRotation, LerpRatio);
 
-	GetOwner()->SetActorRotation(NewRotation);
+	if (MeshOffsetRoot != nullptr)
+	{
+		MeshOffsetRoot->SetWorldRotation(NewRotation);
+	}
 }
 
 void UGoKartMovingReplicationComponent::Server_SendMove_Implementation(FGoKartMove Move)
 {
 	if (MovementComponent == nullptr) return;
+	
+	ClientSimulatedTime += Move.DeltaTime;
 
 	MovementComponent->SimulateMove(Move);
 
@@ -139,7 +174,19 @@ void UGoKartMovingReplicationComponent::Server_SendMove_Implementation(FGoKartMo
 
 bool UGoKartMovingReplicationComponent::Server_SendMove_Validate(FGoKartMove Move)
 {
-	return true; //TODO Actual validation
+	float ProposedTime = ClientSimulatedTime + Move.DeltaTime;
+	bool ClientNotRunningAhead = ProposedTime < GetWorld()->TimeSeconds;
+	if (!ClientNotRunningAhead)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Client running too fast!"));
+		return false;
+	}
+	if (!Move.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Received invalid move!"));
+		return false;
+	}
+	return true;
 }
 
 void UGoKartMovingReplicationComponent::OnRep_ServerState()
@@ -179,8 +226,14 @@ void UGoKartMovingReplicationComponent::SimulatedProxy_OnRep_ServerState()
 	ClientTimeBetweenLastUpdates = ClientTimeSinceUpdate;
 	ClientTimeSinceUpdate = 0;
 
-	ClientStartTransform = GetOwner()->GetActorTransform();
+	if (MeshOffsetRoot != nullptr)
+	{
+		ClientStartTransform = MeshOffsetRoot->GetComponentTransform();
+	}
+	
 	ClientStartVelocity = MovementComponent->GetVelocity();
+
+	GetOwner()->SetActorTransform(ServerState.Transform);
 }
 
 void UGoKartMovingReplicationComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
